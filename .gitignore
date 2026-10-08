@@ -1,0 +1,8 @@
+# 运行产物与个人数据——不入库
+lib/
+.playwright-cli/
+__pycache__/
+*.pyc
+*.log
+_dist/
+docs/*.png.tmp

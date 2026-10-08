@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Agent 轨迹回溯器 · 四区结构 v3（一步=一根线）</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:rgba(120,130,145,.22);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:rgba(120,130,145,.4)}
+::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
+*{scrollbar-width:thin;scrollbar-color:rgba(120,130,145,.28) transparent}
+body{font-family:"Microsoft YaHei",sans-serif;background:#f4f6f9;color:#1f2733;font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{padding:7px 14px;border-bottom:1px solid #dfe4ec;display:flex;align-items:center;gap:12px;background:#fff;position:relative}
+#convTitle{font-size:13.5px;color:#1c4d94;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44vw}
+#convTitle::before{content:"｜";margin:0 10px;color:#c8ced6;font-weight:400}
+#convTitle:empty::before{content:""}
+header h1{font-size:15.5px}
+header .sub{color:#68737f;font-size:11px}
+.controls{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.controls .hint{font-size:11px;color:#8a5a0a;background:#fdf5e4;border:1px solid #d9c184;border-radius:6px;padding:3px 10px}
+.stat{font-size:11.5px;color:#68737f}.stat b{color:#b0730f;font-size:13.5px}
+.controls button{background:#fff;border:1px solid #c3ccd8;color:#2a3542;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px}
+.controls button:hover{background:#eef3fa;border-color:#2563c4}
+#fileInput,#dirInput{display:none}
+#loadLabel{background:#2563c4;color:#fff;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:12.5px;font-weight:600}
+.fbtn{cursor:pointer;border:1px solid #ccd3dd;border-radius:4px;background:#fff;color:#4a5568;font-size:11px;padding:2px 7px;margin-left:2px}
+.fbtn.on{background:#2563c4;color:#fff;border-color:#2563c4}
+#fsBtns{font-size:11px;color:#68737f}
+#liveBtn{background:#fff;color:#b02a2a;border:1.5px solid #d8a0a0;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;font-weight:600}
+#liveBtn.on{background:#c0392b;color:#fff;border-color:#c0392b}
+
+#loadLabel:hover{background:#1c4d94}
+#dirLabel{border:1px solid #2a7a3e;color:#2a7a3e;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:11.5px}
+.panel{background:#fff;border:2.5px solid #55677f;border-radius:10px;display:flex;flex-direction:column;min-height:0;box-shadow:0 2px 10px rgba(50,70,100,.12);overflow:hidden}
+.phead{background:#c6d4e4;color:#0f1c2e;font-size:13px;font-weight:800;padding:7px 10px;border-bottom:2.5px solid #55677f;flex-shrink:0}
+.phead .psub{font-weight:400;font-size:10.5px;color:#44566b;margin-left:6px}
+.pbody{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;padding:8px}
+/* 人工闸门答复条目与循环结束标识 */
+.chip.gate{border-color:#b0730f;background:#fdf5e4;font-weight:600}
+#talkList .loopend{border-top:1.5px dashed #c9a84c;color:#8a5a0a;font-size:10px;text-align:center;padding:3px 0 1px;margin-top:2px}
+.chip.loopmark::after{content:" 🏁";font-size:9px}
+#layout{flex:1;display:flex;gap:8px;padding:8px 12px;min-height:0}
+#agentPanel{width:196px;flex-shrink:0}
+#agentPanel .pbody{overflow-y:auto}
+#agentCards{display:flex;flex-direction:column;gap:7px}
+.acard{background:#fbfcfe;border:2px solid #8fa3bd;border-radius:9px;padding:7px 9px;transition:.25s}
+.acard h2{font-size:12.5px;margin:0 0 2px}
+.acard .rl{font-size:10px;color:#68737f;line-height:1.45}
+.acard .st{font-size:10.5px;color:#4a5563;margin-top:3px;line-height:1.5}
+.acard.suba{border-style:dashed;background:#fbfaff;border-color:#9a86c4}
+.acard.suba h2{font-size:11.5px;color:#4a3663}
+.acard.busy{border-color:#b0730f;animation:abusy 1.1s ease-in-out infinite}
+@keyframes abusy{0%,100%{box-shadow:0 0 0 rgba(176,115,15,0)}50%{box-shadow:0 0 16px rgba(176,115,15,.65)}}
+#tools{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+.tool{background:#fff;border:1px solid #c3ccd8;border-radius:6px;padding:3px 9px;font-size:11.5px;color:#4a5563;transition:.2s}
+.tool small{color:#8a94a2;font-size:9px;margin-left:5px}
+.tool.used{border-color:#b0730f;color:#8a5a0a;background:#fdf5e4;animation:tpulse 1.1s ease-in-out infinite}
+@keyframes tpulse{0%,100%{box-shadow:0 0 0 rgba(176,115,15,0)}50%{box-shadow:0 0 11px rgba(176,115,15,.55)}}
+#shelfPanel{flex:1.35}
+#shelfWrap{flex:1;display:flex;gap:6px;min-height:0}
+.shelfCol{flex:1;border:1.5px solid #c9d4e2;border-radius:8px;padding:6px 8px;background:#fbfcfe;display:flex;flex-direction:column;min-height:0}
+.shelfCol>b{display:block;font-size:11px;font-weight:800;margin-bottom:5px;color:#1c4d94;flex-shrink:0}
+.shelfCol>b small{font-weight:400;color:#8a94a2;font-size:9px}
+.shelfRow{display:flex;flex-wrap:wrap;gap:4px;align-content:flex-start;overflow-y:auto;min-height:0}
+a.sfile{display:inline-block;background:#fff;border:1px solid #c3ccd8;border-radius:5px;padding:2px 8px;font-size:11px;color:#2a3542;text-decoration:none;transition:.25s;font-family:Consolas,monospace;cursor:pointer}
+a.sfile:hover{border-color:#2563c4;box-shadow:0 0 8px rgba(37,99,196,.35)}
+a.sfile.picked{border-color:#2563c4;box-shadow:0 0 10px rgba(37,99,196,.4);transform:translateY(-2px)}
+a.sfile.written{border-color:#c46a1a;color:#a34f0a;background:#fdf3ea}
+a.sfile.written::after{content:" ✏️"}
+a.sfile.k-frame{border-color:#9a86c4;background:#f8f5fd}
+a.sfile.k-skill{border-color:#b79fd6;background:#f3ecfb}
+a.sfile.k-web{border-color:#4a90d9;background:#eaf4fd}
+a.sfile.haslink::after{content:" ↗";color:#2563c4;font-size:9px}
+#packPanel{flex:1.25}
+.chip.taken{opacity:.3;text-decoration:line-through}
+.chip.taken::after{content:" ·已塌缩";font-size:9px;color:#a5aeb9}
+a.sfile.wback{border-color:#9a86c4!important;background:#f3ecfb}
+a.sfile.wback.written::after{content:" ✏️⬆"}
+#ctxCore{border:1.5px solid #8fa3bd;background:#eef3fa;border-radius:6px;padding:3px 8px;font-size:10.5px;color:#44566b;margin-bottom:6px;flex-shrink:0}
+#ctxCore b{color:#1c4d94}
+#packChips{flex:1;overflow-y:auto;display:flex;flex-wrap:wrap;gap:4px;align-content:flex-start;border:1.5px solid #dbe2ec;border-radius:8px;padding:6px;background:#fbfcfe;min-height:0}
+.chip{background:#f2f5fa;border:1px solid #c9d2df;border-radius:4px;padding:2px 7px;font-size:11px;font-family:Consolas,monospace;color:#2a3542;cursor:default}
+.chip.pop{animation:pop .3s}
+.chip.auto{border-color:#b79fd6;background:#f5effb}
+.chip.hasShelf{cursor:pointer}
+.sfile.picked2{outline:2px solid #2563c4;background:#eaf2fd}
+.chip.result{border-color:#8fbf98;background:#eef7ef}
+.chip.user{border-color:#2563c4;background:#e8f0fb;font-weight:600}
+.chip.web{border-color:#4a90d9;background:#eaf4fd}
+.chip.failed{border-color:#c33;background:#fdf0f0}
+.chip.taken{opacity:.35;text-decoration:line-through}
+a.sfile.written.k-frame::after{content:" ⬆";color:#7a4fa8;font-size:9px}
+@keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+.subzone{border:2px dashed #9a86c4;border-radius:9px;padding:5px 6px;margin-top:6px;background:#fbfaff;flex-shrink:0}
+.subzone>.zt{font-size:10.5px;font-weight:800;color:#4a3663;margin-bottom:4px}
+.subzone>.zt small{font-weight:400;color:#8a8aa0}
+#chipsSub{display:flex;flex-wrap:wrap;gap:3px;max-height:96px;overflow-y:auto}
+.chip.schip{border-style:dashed}
+#packCount{font-size:11px;color:#68737f;border-top:1px dashed #dfe4ec;padding-top:4px;margin-top:5px}
+#packCount b{color:#b0730f}
+#modelPanel{flex:1}
+#talkFlow{background:#fdfaf0;border:1.5px solid #c9a84c;color:#5a4710;border-radius:7px;padding:6px 8px;font-size:11px;line-height:1.6;flex:1;display:flex;flex-direction:column;min-height:0}
+#talkFlow>b{color:#8a5a0a;font-weight:800;font-size:11.5px}
+#talkFlow .note{font-weight:400;font-size:9.5px;color:#a8945e;display:block;margin:1px 0 3px}
+#talkList{flex:1;overflow-y:auto;min-height:0}
+#talkList .q{border-bottom:1px dashed #e8d9ac;padding:3px 2px;color:#7a5c14;font-size:10.5px;line-height:1.6}
+#talkList .q b{color:#2563c4}
+#talkList .a{border-bottom:1px dashed #d8ccec;padding:3px 2px;color:#4a3663;font-size:10.5px;line-height:1.6;background:#f8f4fd}
+#talkList .a b{color:#7a4fa8}
+#talkList .a.bad{color:#a33}
+#lines{position:fixed;inset:0;pointer-events:none;z-index:98;width:100%;height:100%}
+#lines text{font-weight:600;paint-order:stroke;stroke:#fff;stroke-width:4px}
+#tip{position:fixed;z-index:120;max-width:360px;background:#fffdf5;border:1.5px solid #b0730f;border-radius:8px;padding:8px 11px;font-size:12px;line-height:1.65;color:#4a3a14;box-shadow:0 4px 16px rgba(120,80,10,.18);display:none;pointer-events:none;max-height:60vh;overflow-y:auto}
+#tip b{color:#8a5a0a}
+footer{border-top:1px solid #dfe4ec;background:#fff}
+#caption{padding:7px 14px;font-size:13.5px;line-height:1.5;min-height:38px;color:#1f2733}
+#caption b{color:#8a5a0a}
+#log{max-height:74px;overflow-y:auto;padding:0 14px 7px;font-size:11px;color:#68737f;line-height:1.7;font-family:Consolas,monospace}
+#log .n{color:#a5aeb9}#log .hl{color:#8a5a0a}#log .err{color:#c33}
+#taskOverlay{position:fixed;inset:0;background:rgba(40,55,75,.45);z-index:200;display:none}
+#taskBox{width:840px;max-height:70vh;margin:60px auto;background:#fff;border-radius:12px;padding:14px 18px;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.3)}
+#taskBox h2{font-size:15px;margin-bottom:8px}
+#taskBox table{width:100%;border-collapse:collapse;font-size:12.5px}
+#taskBox td,#taskBox th{border-bottom:1px solid #e6eaf1;padding:6px 8px;text-align:left}
+#taskBox tr.taskrow{cursor:pointer}
+#taskBox tr.taskrow:hover{background:#eef3fa}
+#taskBox tr.grprow td{background:#eef2f8;font-weight:800;color:#1c4d94;font-size:12.5px;padding-top:9px}
+#taskBox td .st2{color:#8a94a2;font-size:10.5px}
+#taskBox tr.loading td{background:#fdf5e4;color:#8a5a0a}
+#taskBox .close{float:right;cursor:pointer;border:1px solid #c3ccd8;border-radius:5px;padding:2px 10px;background:#fff}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Agent 轨迹可视化</h1></div>
+  <span id="convTitle"></span>
+  <div class="controls">
+    <span class="stat">上下文 <b id="pk">0</b></span>
+    <span class="stat">步 <b id="roundN">0</b>/<b id="roundTotal">0</b></span>
+    <span class="stat">失败 <b id="errN" style="color:#c33">0</b></span>
+    <span id="fsBtns">字号<button class="fbtn" data-z="0.85">小</button><button class="fbtn" data-z="1">中</button><button class="fbtn" data-z="1.15">大</button></span>
+    <button id="liveBtn">🔴 跟踪模式</button>
+    <label id="loadLabel">📂 载入对话<input type="file" id="fileInput" accept=".jsonl" style="display:none"></label>
+    <label id="dirLabel">📁 其他目录…<input type="file" id="dirInput" webkitdirectory multiple style="display:none"></label>
+    <span class="hint">🖱 滚轮 / ⌨️ ←→ 一下一根线</span>
+    <button id="resetBtn">⏮ 开头</button>
+    <button id="endBtn">⏭ 末尾</button>
+  </div>
+</header>
+<div id="layout">
+  <div id="agentPanel" class="panel">
+    <div class="phead">🤖 Agent 层<span class="psub">谁在操作 · 动作时闪烁</span></div>
+    <div class="pbody">
+      <div id="agentCards">
+        <div class="acard" id="a-main"><h2>🤖 主 agent</h2><div class="rl">循环：调模型→执行→回填，直到回答</div><div class="st" id="mainState">待载入…</div></div>
+      </div>
+      <div id="tools">
+        <span class="tool" id="t-read">👀 读文件<small>Read</small></span>
+        <span class="tool" id="t-write">⌨️ 写文件<small>Write</small></span>
+        <span class="tool" id="t-bash">⌨️ 终端<small>Shell/执行环境</small></span>
+        <span class="tool" id="t-skill">📖 技能<small>Skill</small></span>
+        <span class="tool" id="t-web">🌐 上网<small>Web</small></span>
+        <span class="tool" id="t-spawn">📤 派子agent<small>Spawn</small></span>
+        <span class="tool" id="t-ask">🔐 人工闸门<small>Ask</small></span>
+      </div>
+    </div>
+  </div>
+  <div id="shelfPanel" class="panel">
+    <div class="phead">📚 资料架<span class="psub">悬停看说明 · 点击↗打开实际文件</span></div>
+    <div class="pbody">
+      <div id="shelfWrap">
+        <div class="shelfCol"><b>🏛 框架资料<small> 与项目无关的架构性文件·技能</small></b><div id="shelf-frame" class="shelfRow"></div></div>
+        <div class="shelfCol"><b>📋 项目资料<small> 本项目要拿的文件</small></b><div id="shelf-proj" class="shelfRow"></div></div>
+        <div class="shelfCol"><b>🌍 互联网<small> 框架/项目里没有→上网找</small></b><div id="shelf-web" class="shelfRow"></div></div>
+      </div>
+    </div>
+  </div>
+  <div id="packPanel" class="panel">
+    <div class="phead">🎒 上下文<span class="psub">常驻区永不淘汰 + 历史区整包重发 · 悬停出路径+说明</span></div>
+    <div class="pbody">
+      <div id="ctxCore"></div>
+      <div id="packChips"></div>
+      <div class="subzone">
+        <div class="zt">🧩 子agent上下文（<b style="color:#b0730f">独立窗口 · 不随主包发给大模型</b> · 与左侧同色子agent卡对应）<small> · 未派活时为空</small></div>
+        <div id="chipsSub"></div>
+      </div>
+      <div id="packCount">主包现有 <b id="pk2">0</b> ｜ <b id="pkN">0</b> 份内容 ｜ 真耗 <b id="pkReal">-</b> <span class="note">(usage真值,估算除外)</span></div>
+    </div>
+  </div>
+  <div id="modelPanel" class="panel">
+    <div class="phead">🧠 大模型<span class="psub">只看输入/输出：输入1→输出1→输入2→输出2…</span></div>
+    <div class="pbody">
+      <div id="talkFlow"><b>🔁 输入/输出流水</b><span class="note">每行 = 输入n ▸ 输出n：工具结果进包后整包重发，才有下一次输入</span><div id="talkList"></div></div>
+    </div>
+  </div>
+</div>
+<footer>
+  <div id="caption">点击「📂 载入对话」选择要回溯的对话</div>
+  <div id="log"></div>
+</footer>
+<svg id="lines"></svg>
+<div id="tip"></div>
+<div id="taskOverlay"><div id="taskBox">
+  <h2>选择对话 <span id="convMeta" style="font-size:11px;color:#68737f;font-weight:400"></span><span class="close" onclick="document.getElementById('taskOverlay').style.display='none'">关闭</span></h2>
+  <table><tbody id="convRows"></tbody></table>
+</div></div>
+<script>
+const $=id=>document.getElementById(id);
+let STEPS=[],idx=-1,stepSeq=0,silent=false,logN=0,subN=0,EVS=[],LIVE=null,CUR=null;
+let words=0,items=0,errs=0,realTok=0,realCost=0;
+const fmt=t=>t>=1000?(t/1000).toFixed(1).replace(/\.0$/,"")+"K":Math.round(t);
+const short=(s,n)=>{s=(s||"").replace(/\s+/g," ");return s.length>n?s.slice(0,n)+"…":s};
+const esc=s=>(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const ACTN={read:"👀读",write:"⌨️写",exec:"⌨️执行",web:"🌐上网",skill:"📖装技能",spawn:"📤派子agent",report:"📥子agent回包",ask:"🔐请示"};
+const SUBC=["#7a4fa8","#2a7a3e","#b0730f","#4a90d9","#a84343"];
+function agent(t){$("mainState").textContent=t;}
+function tool(id){if(silent)return;const t=$("t-"+id);if(t)t.classList.add("used");}
+function upd(){$("pk").textContent=fmt(words);$("pk2").textContent=fmt(words);$("pkN").textContent=items;
+  if(realTok>0)$("pkReal").textContent=fmt(realTok)+"tok"+(realCost>0?" · $"+(realCost<0.1?realCost.toFixed(4):realCost.toFixed(2)):"");}
+function clearLines(){$("lines").innerHTML="";}
+function elz(x){return typeof x==="string"?$(x.replace(/^#/,"")):x;}
+function line(from,to,color,label){
+  const seq=stepSeq;
+  const draw=()=>{if(seq!==stepSeq)return;
+    $("lines").innerHTML="";   // 只看当前一根线，不留残影
+    const A=elz(from),B=elz(to);if(!A||!B)return;
+    const r1=A.getBoundingClientRect(),r2=B.getBoundingClientRect();
+    const z=parseFloat(document.body.style.zoom)||1;   // body zoom 下 SVG用户坐标=屏幕坐标/z
+    const cx1=r1.left+r1.width/2,cy1=r1.top+r1.height/2,cx2=r2.left+r2.width/2,cy2=r2.top+r2.height/2;
+    const NS="http://www.w3.org/2000/svg";
+    const ln=document.createElementNS(NS,"line");
+    ln.setAttribute("x1",cx1/z);ln.setAttribute("y1",cy1/z);
+    ln.setAttribute("x2",cx1/z);ln.setAttribute("y2",cy1/z);
+    ln.setAttribute("stroke",color);ln.setAttribute("stroke-width","2.2");ln.setAttribute("stroke-dasharray","8,5");
+    $("lines").appendChild(ln);
+    const tx=document.createElementNS(NS,"text");
+    tx.setAttribute("x",((r1.left+r2.left+r1.width)/2)/z);tx.setAttribute("y",((r1.top+r2.top)/2-9)/z);
+    tx.setAttribute("text-anchor","middle");tx.setAttribute("fill",color);
+    tx.setAttribute("font-size","12.5");tx.textContent=label;tx.style.opacity="0";
+    $("lines").appendChild(tx);
+    const t0=performance.now(),dur=700;
+    (function anim(now){const k=Math.min(1,(now-t0)/dur),e=1-Math.pow(1-k,2);
+      ln.setAttribute("x2",cx1/z+(cx2/z-cx1/z)*e);
+      ln.setAttribute("y2",cy1/z+(cy2/z-cy1/z)*e);
+      if(k>0.4)tx.style.opacity=String((k-0.4)/0.6);
+      if(k<1)requestAnimationFrame(anim);})(t0);};
+  if(silent)return;setTimeout(draw,0);}
+function log(who,txt,cls){const d=document.createElement("div");d.className=cls||"";d.innerHTML="<span class='n'>"+String(++logN).padStart(3,"0")+"</span> <span class='hl'>"+who+"</span>："+short(txt,110);$("log").appendChild(d);$("log").scrollTop=99999;}
+/* ===== 事件 → 步骤（一步=一根线） ===== */
+function buildSteps(events){
+  const steps=[];let k=0,round=0,pendThink=0,pendUsage=null;
+  const push=s=>{s.round=round;steps.push(s);};
+  for(const e of events){
+    if(e.action==="user_msg"||e.action==="boot"){
+      round++;k=1;
+      push({kind:e.action==="boot"?"boot":"user",label:e.action==="boot"?"开机装载":("用户原话:"+short(e.detail,40)),txt:e.detail,evFrom:e.seq});
+      continue;
+    }
+    if(e.action==="think"){pendThink++;pendUsage=e.usage||pendUsage;continue;}   // 思考块并入本輪输出行
+    if(e.action==="answer"){push({kind:"answer",label:"输出"+k+"：回答",txt:e.detail,k:k,tok:Math.max(120,e.tokens_est||0),evFrom:e.seq,think:pendThink,usage:pendUsage});pendThink=0;pendUsage=null;continue;}
+    if(e.action==="inject"){push({kind:"inject",label:"注入:"+short(e.target,30),target:e.target,detail:e.detail,tok:e.tokens_est,evFrom:e.seq});continue;}
+    if(e.action==="compress"){push({kind:"compress",label:"压缩：历史→摘要",evFrom:e.seq,manual:e.target==="compact_context",detail:e.detail||""});continue;}
+    if(e.action==="spawn"){push({kind:"spawn",label:"派子agent",target:e.target,evFrom:e.seq});continue;}
+    if(e.action==="ask"){push({kind:"ask",label:"人工闸门：请示",detail:e.detail||e.target,evFrom:e.seq});continue;}
+    if(!["read","write","exec","web","skill","report"].includes(e.action))continue;
+    // 工具：一个动作步(不拉线,agent闪) + 一根结果线；输入=整包恒定，用输入灯表示
+    push({kind:"act",label:ACTN[e.action]+" "+short(e.target,36),action:e.action,target:e.target,k:k,ok:e.ok,evFrom:e.seq});
+    push({kind:"result",label:short(((e.target||"").split(/[\\/]/).pop())||e.target,36)+" → 上下文",action:e.action,target:e.target,tok:Math.max(0,e.tokens_est),ok:e.ok,detail:e.detail,path:e.path,basis:e.basis,evFrom:e.seq});
+    k++;
+  }
+  return steps;
+}
+/* ===== 资料架 ===== */
+const FRAME_HINTS=/(\.pi[\\\/]agent|\.agents[\\\/]|[\\\/]skills[\\\/]|AGENTS\.md$|SKILL\.md$|README\.md$|CLAUDE\.md$|TOOLS?\.md$|os-bootstrap)/i;
+function shelfEnsure(e,action){
+  let kind,base,f=null;
+  if(action==="web"){kind="web";base="🌐 "+short(e.target,28);}
+  else if(action==="skill"){kind="skill";base="📖 "+e.target;
+    if(e.path){const norm=e.path.replace(/\\/g,"/");
+      f=[...document.querySelectorAll('#shelfPanel .sfile')].find(x=>x.dataset.key==="pre:"+norm)||null;}}   // 预置项已存在则复用，不重复建
+  else{base=(e.target||"").split(/[\\/]/).pop();if(!base)return null;
+       kind=FRAME_HINTS.test(e.target||"")?"frame":"proj";}
+  const isDir=kind!=="web"&&!/\.[a-z0-9]+$/i.test(base);   // 无后缀名=文件夹
+  const key=kind+":"+base.toLowerCase();
+  f=f||document.querySelector('#shelfPanel .sfile[data-key="'+key.replace(/"/g,'\\"')+'"]');
+  if(!f){f=document.createElement("a");f.className="sfile k-"+kind;f.dataset.key=key;
+         f.textContent=short((kind==="frame"?"🏛 ":kind==="proj"?(isDir?"📁 ":"📄 "):"")+base,32);   // 资料架同款图标分类;文件夹标📁
+         $("shelf-"+(kind==="skill"?"frame":kind)).appendChild(f);
+         f.scrollIntoView({block:"nearest"});}
+  const link=e.path||(/^([a-zA-Z]:[\\\/]|\/)/.test(e.target||"")?e.target:"");
+  if(link){f.dataset.link=link;f.classList.add("haslink");
+           if(location.protocol==="file:")f.href="file:///"+link.replace(/\\/g,"/").replace(/^\/+/,"");
+           else f.href="/open?path="+encodeURIComponent(link);   // http下浏览器禁file://,走服务器系统打开
+           f.target=location.protocol==="file:"?"_blank":"";}
+  f.dataset.tip=(action==="web"?"<b>上网取回</b> "+esc(short(e.target,80))+"<br>":
+                action==="skill"?"<b>技能文件</b>（用到才装进上下文）<br>":
+                action==="write"?(FRAME_HINTS.test(e.target||"")?"<b>⬆ 写回框架/记忆</b>（跨会话生效，下次开机装入）<br>":"<b>写盘</b>（agent 产出的资料）<br>"):
+                action==="read"?(isDir?"<b>📁 读文件夹</b>（目录浏览，无单文件）<br>":"<b>读盘</b>（资料进上下文）<br>"):"<b>触碰</b><br>")+
+    (e.detail&&!e.detail.startsWith("失败")?esc(short(e.detail,120))+"<br>":"")+
+    (link?"路径: "+esc(link)+"<br><span style='color:#2563c4'>点击↗打开实际文件</span>":"路径: "+esc(short(e.target,90)))+
+    (e.basis?"<br>依据: "+esc(e.basis):"");
+  if(action==="write")f.classList.add("written");
+  if(action==="write"&&FRAME_HINTS.test(e.target||""))f.classList.add("wback");   // 写回框架/记忆
+  return f;
+}
+/* 悬停 tooltip：资料架文件 + 上下文条目 */
+document.addEventListener("mousemove",ev=>{
+  const t=ev.target.closest?ev.target.closest(".sfile,.chip"):null;
+  const tip=$("tip");
+  if(t&&t.dataset.tip){
+    tip.innerHTML=t.dataset.tip;tip.style.display="block";
+    const w=tip.offsetWidth,h=tip.offsetHeight;
+    let x=ev.clientX+14,y=ev.clientY+16;
+    if(x+w>innerWidth-8)x=ev.clientX-w-14;
+    if(y+h>innerHeight-8)y=Math.max(8,innerHeight-h-10);
+    tip.style.left=x+"px";tip.style.top=y+"px";
+  }else tip.style.display="none";
+});
+/* ===== 大模型流水：每行=输入n ▸ 输出n ===== */
+function talkOut(k,txt,bad,s){const d=document.createElement("div");d.className="a"+(bad?" bad":"");
+  const u=s&&s.usage;
+  if(u){realTok+=u.t||0;realCost+=u.$||0;upd();}
+  const tag="<b>输入"+k+" ▸ "+((s&&s.think)?"💭×"+s.think+" ▸ ":"")+"输出"+k+"</b>"+
+    (u?" <span class='note'>("+fmt(u.t)+"tok"+(u.$?" · $"+(u.$<0.1?u.$.toFixed(4):u.$.toFixed(2)):"")+")</span>":"");
+  d.innerHTML=tag+" "+esc(short(txt,220));$("talkList").appendChild(d);$("talkList").scrollTop=99999;}
+/* ===== 上下文条目：只显文件名，详情悬停 ===== */
+function addChip(name,tok,cls,tipHtml){
+  const c=document.createElement("span");c.className="chip "+(cls||"")+(silent?"":" pop");
+  c.innerHTML=short(name,40);
+  c.dataset.tip=tipHtml+"<br>装包 ≈"+fmt(Math.max(0,tok));
+  c.dataset.w=tok;$("packChips").appendChild(c);
+  c.scrollIntoView({block:"nearest"});   // 溢出自动滚动，连线才打得准
+  words+=Math.max(0,tok);items++;upd();return c;}
+/* 终端动作分类（全库 6280 条实测定的 8 类）：条目显类型，完整命令进浮窗 */
+function execInfo(cmd){
+  const c=(cmd||"").replace(/^\s*cd\s+"[^"]*"\s*&&\s*/,"").replace(/^\s*(cmd|pwsh|powershell)\s+\/c\s+/,"").trim();
+  let cat="执行";
+  if(/^(plan_update|todo|claim_files|subagent|delegate_task|schedule_|compact_context|lsp|eval|db_)/.test(c))cat="协调";
+  else if(/^git\b/.test(c))cat="git";
+  else if(/playwright-cli|live_preview|browser_page|start\s+http/i.test(c))cat="浏览器";
+  else if(/^(python|node|npm|npx|pip|pi|pi-web-ui|playwright|pytest|powershell|pwsh|cmd)\b/.test(c))cat="运行";
+  else if(/\.(exe|py|sh)\b|miniconda|bin\//i.test(c))cat="运行";
+  else if(/^(echo|sed -i|mv |cp |rm |mkdir|del |rmdir|touch|robocopy|copy )|(^|&)(echo[^|]*>|-?>>|> )/.test(c))cat="文件操作";
+  else if(/curl|ssh|scp|ping|Invoke-WebRequest/i.test(c))cat="网络";
+  else if(/(^|&&\s*)(taskkill|netstat|tasklist|schtasks)\b|\bsc\s+(config|query|start|stop)/i.test(c))cat="系统";
+  else if(/^(rg|grep|find|cat|head|tail|ls|dir|type|wc|findstr|where|date|for |sed|awk)\b/.test(c))cat="查看";
+  return {cat,brief:short(c.replace(/\s+/g," "),26)};
+}
+/* ===== 逐步执行 ===== */
+function execStep(s){
+  if(s.kind==="boot"){
+    agent("开机，章程就位");
+    $("ctxCore").innerHTML="📌 常驻：章程+工具表 <b>≈7K</b>（开机装入 · 永不淘汰 · 压缩不动它）";
+    words+=7000;upd();   // 常驻区计入总量，但不入历史堆
+    log("平台","开机自动装载：章程/工具表/记忆（常驻区）");return;}
+  if(s.kind==="user"){
+    $("a-main").classList.remove("busy");   // 只清主卡；子agent运行中不熄
+    const c=addChip("💬 "+short(s.txt,34),120,"user","<b>用户原话</b>（本轮起点）");return;}
+  if(s.kind==="act"){
+    tool(s.action==="report"?"spawn":s.action);
+    const mc=$("a-main");mc.classList.add("busy");
+    agent(ACTN[s.action]+"："+short(s.target,40));if(!silent)log("agent",ACTN[s.action]+" "+short(s.target,80));
+    if(!s.ok)log("失败","["+s.action+"] "+short(s.target,60),"err");
+    talkOut(s.k,ACTN[s.action]+" "+short(s.target,70),!s.ok);return;}
+  if(s.kind==="result"){
+    let src=null;
+    if(["read","write","skill","web"].includes(s.action))src=shelfEnsure(s,s.action);
+    const cls=!s.ok?"failed":(s.action==="web"?"web":s.action==="skill"?"auto":"result");
+    const base=(s.target||"").split(/[\\/]/).pop()||s.target;
+    const IC={read:"📄",write:"✏️",skill:"📖",web:"🌐",exec:"⌨️",report:"📥"};
+    const x=s.action==="exec"?execInfo(s.target):null;
+    const name=s.action==="web"?"🌐 "+short(s.target,28):s.action==="exec"?((x.cat==="协调"?"🧩":"⌨️")+x.cat+" · "+x.brief):((IC[s.action]||"")+" "+base).trim();   // 终端条目=类型+简令，完整命令在浮窗
+    const tipHtml="<b>"+(ACTN[s.action]||s.action)+"</b> "+esc(short(s.target,80))+
+      (s.detail?"<br>"+esc(short(s.detail,140)):"")+
+      (s.path?"<br>技能文件: "+esc(s.path):"")+(s.basis?"<br>依据: "+esc(s.basis):"");
+    const c=addChip(name,s.tok,cls,tipHtml);
+    if(src){   // 点击上下文条目 → 画出它来自资料架哪一格（原件在哪）
+      c.classList.add("hasShelf");
+      c.onclick=()=>{src.scrollIntoView({block:"nearest",behavior:"smooth"});src.classList.add("picked2");
+        line(src,c,"#2563c4","你点的条目 ← 资料架原件");
+        const s2=stepSeq;setTimeout(()=>{if(s2===stepSeq)src.classList.remove("picked2");},1800);};}
+    if(!s.ok)log("失败","["+s.action+"] "+short(s.target,60),"err");
+    if(s.action==="report"){                            // 子agent回包：终态标到最早仍在运行的子卡
+      const card=[...document.querySelectorAll("#agentCards .acard.suba")].find(x=>x.querySelector(".st")&&x.querySelector(".st").textContent.includes("运行"));
+      if(card){card.classList.remove("busy");const st=card.querySelector(".st");if(st)st.textContent="已回包 ✓ 回到主 agent";
+        line(card,c,SUBC[(subN-1+SUBC.length)%SUBC.length],"回包 → 上下文（循环继续）");}
+      else line("#a-main",c,"#2a7a3e","回包 → 上下文");}
+    else if(src){line(src,c,"#8fbf98",(ACTN[s.action]||s.action)+" → 上下文");
+            if(s.action==="read"&&!silent){src.classList.add("picked");const s2=stepSeq;setTimeout(()=>{if(s2===stepSeq)src.classList.remove("picked");},1500);}}
+    return;}
+  if(s.kind==="spawn"){tool("spawn");
+    subN++;const card=document.createElement("div");card.className="acard suba";card.id="a-sub"+subN;
+    card.style.borderColor=SUBC[(subN-1)%SUBC.length];
+    card.innerHTML="<h2>🧩 子agent "+subN+"</h2><div class='rl'>"+esc(short(s.target,40))+"</div><div class='st'>独立小包运行</div>";
+    $("agentCards").appendChild(card);card.classList.add("busy");
+    const c=document.createElement("span");c.className="chip auto schip"+(silent?"":" pop");
+    c.innerHTML="🧩 "+short(s.target,36);c.dataset.tip="<b>派子agent</b> 简报进其独立上下文<br>"+esc(short(s.target,90));
+    $("chipsSub").appendChild(c);
+    line("#packChips",c,SUBC[(subN-1)%SUBC.length],"简报 → 子agent上下文");
+    log("主agent","[Spawn] "+short(s.target,60));return;}
+  if(s.kind==="ask"){tool("ask");
+    // 人工闸门：不再单独占行；请示亮在 agent 层，答复作为上下文条目（🔐）
+    const mc=$("a-main");mc.classList.add("busy");agent("🔐 人工闸门：请示中，等用户允许…");
+    addChip("🔐 人工答复",120,"gate","<b>人工闸门</b> agent 请示，你在弹窗里点「允许」；答复进上下文（整包重发）<br>"+esc(short(s.detail||"",100)));
+    log("agent","[Ask] "+short(s.detail,70));return;}
+  if(s.kind==="inject"){
+    if((s.target||"").indexOf("✂️")===0){log("harness","✂️ 剪除上下文条目（手动编辑，整包重发时少一份）");return;}
+    const isUser=(s.target||"").indexOf("用户装料")===0;
+    addChip((isUser?"📎 ":"🧷 ")+short(isUser?(s.detail||"文件"):(s.target),26),Math.max(50,s.tok||0),"auto",
+      "<b>"+(isUser?"用户装料":"harness注入")+"</b> "+esc(short(s.target,60))+(s.detail?"<br>"+esc(short(s.detail,180)):"")+
+      "<br>非模型自取——"+(isUser?"用户拖进包的":"平台/系统塞进包的"));return;}
+  if(s.kind==="answer"){
+    talkOut(s.k,"💬 "+s.txt,false,s);
+    const c=addChip("🧠回答"+s.k,s.tok||120,"result","<b>输出"+s.k+"·回答（本轮循环终点）</b> "+esc(short(s.txt,160)));
+    c.classList.add("loopmark");   // 与大模型区🏁对应：这个回答=本轮循环收口
+    line("#talkFlow",c,"#7a4fa8","输出"+s.k+"：回答 → 上下文");
+    $("a-main").classList.remove("busy");   // 主循环终止；子agent卡保留运行/终态
+    const end=document.createElement("div");end.className="loopend";   // 循环边界标识
+    end.innerHTML="🏁 本轮循环结束 · 共 "+s.k+" 次输入/输出";
+    $("talkList").appendChild(end);$("talkList").scrollTop=99999;
+    agent("循环终止 · 本轮 "+Math.max(0,s.k-1)+" 次工具调用后回答");return;}
+  if(s.kind==="compress"){
+    // 历史区塌缩：历史 chips 划掉，常驻区不动，摘要入堆
+    let cut=0,cutN=0;
+    [...$("packChips").children].forEach(x=>{if(!x.classList.contains("taken")){x.classList.add("taken");cut+=+x.dataset.w||0;cutN++;}});
+    words-=cut;items-=cutN;upd();
+    if(s.manual)addChip("🗜 手动压缩",800,"auto","<b>compact_context</b> 主动压缩："+cutN+" 份历史塌缩为摘要重入上下文"+(s.detail?"<br>"+esc(short(s.detail,260)):""));
+    else addChip("🗜 触顶自动压缩",1500,"auto","<b>触顶→摘要替换</b> "+cutN+" 份历史（≈"+fmt(cut)+"）塌缩为摘要；常驻区章程/工具表不动");
+    const d=document.createElement("div");d.className="loopend";
+    d.innerHTML="🗜 上下文压缩 · "+cutN+" 份历史塌缩为摘要";
+    $("talkList").appendChild(d);$("talkList").scrollTop=99999;
+    agent("上下文压缩 · 历史→摘要");log("平台","🗜 压缩：历史→摘要（常驻区不动）");return;}
+}
+/* ===== 步进导航 ===== */
+/* 回退/跳转后重画当前步的线(P1-3)：一步=一根线在前向后也成立 */
+function redrawCurrent(s){
+  const lastChip=()=>[...$("packChips").children].pop();
+  if(s.kind==="user"&&lastChip())line("#a-main",lastChip(),"#2563c4","用户原话 → 上下文");
+  else if(s.kind==="result"){const last=lastChip();
+    if(["read","write","skill","web"].includes(s.action)&&last){
+      const base=short((s.target||"").split(/[\\/]/).pop()||s.target,20);
+      const src=[...document.querySelectorAll('#shelfPanel .sfile')].find(f=>f.textContent.includes(base));
+      if(src)line(src,last,"#8fbf98",(ACTN[s.action]||s.action)+" → 上下文");}}
+  else if(s.kind==="answer"&&lastChip())line("#talkFlow",lastChip(),"#7a4fa8","输出"+s.k+"：回答 → 上下文");
+  else if(s.kind==="spawn"){const lc=[...$("chipsSub").children].pop();if(lc)line("#packChips",lc,SUBC[(subN-1+SUBC.length)%SUBC.length],"简报 → 子agent上下文");}
+}
+function rebuild(n){ // 静默重放 0..n
+  resetState();silent=true;
+  for(let i=0;i<=n;i++)execStep(STEPS[i]);
+  silent=false;stepSeq++;clearLines();
+  redrawCurrent(STEPS[n]);
+}
+function goTo(n){
+  if(n<0||n>=STEPS.length)return;
+  idx=n;rebuild(n);
+  const s=STEPS[n];
+  $("roundN").textContent=n+1;
+  $("caption").innerHTML="<b>步骤 "+(n+1)+" / "+STEPS.length+"</b>（轮 "+s.round+"）｜ "+esc(s.label||s.target||s.txt||s.detail||"");
+}
+function next(){if(idx<STEPS.length-1){idx++;stepSeq++;clearLines();execStep(STEPS[idx]);   // 每步先清线：无线步骤不残留上一根
+  const s=STEPS[idx];$("roundN").textContent=idx+1;
+  $("caption").innerHTML="<b>步骤 "+(idx+1)+" / "+STEPS.length+"</b>（轮 "+s.round+"）｜ "+esc(s.label||s.target||s.txt||s.detail||"");}}
+function prev(){if(LIVE)LIVE.follow=false;if(idx>0)goTo(idx-1);}
+function resetState(){words=0;items=0;logN=0;subN=0;realTok=0;realCost=0;$("pkReal").textContent="-";
+  $("packChips").innerHTML="";$("log").innerHTML="";$("talkList").innerHTML="";$("chipsSub").innerHTML="";
+  $("ctxCore").innerHTML="";
+  ["frame","proj","web"].forEach(z=>{$("shelf-"+z).innerHTML="";});
+  populateFrame();   // 框架资料=预置常驻，重置后回填
+  document.querySelectorAll("#agentCards .acard.suba").forEach(x=>x.remove());
+  document.querySelectorAll(".acard").forEach(x=>x.classList.remove("busy"));
+  document.querySelectorAll(".tool").forEach(x=>x.classList.remove("used"));
+  $("mainState").textContent="运行中…";upd();}
+/* ===== 载入对话 ===== */
+function loadEvents(events,name,project){
+  EVS=events;   // live跟踪时同一数组持续追加
+  errs=events.filter(e=>!e.ok).length;
+  $("errN").textContent=errs;
+  const bd={};events.filter(e=>!e.ok).forEach(e=>{bd[e.action]=(bd[e.action]||0)+1;});   // 失败类型明细，悬停可见
+  $("errN").title=errs?"失败明细："+Object.entries(bd).map(([k2,v])=>(ACTN[k2]||k2)+"×"+v).join(" "):"无失败";
+  STEPS=buildSteps(events);
+  $("roundTotal").textContent=STEPS.length;
+  resetState();idx=-1;next();
+  $("convTitle").textContent=(project?"📁 "+project+" · ":"")+name;
+  $("caption").innerHTML="<b>对话："+esc(name)+"</b> ｜ 共 "+STEPS.length+" 步，滚轮/←→ 一下一根线";
+}
+/* 框架资料预置：构建时扫出的真实架构性文件（章程+全部技能），悬停/跳转同资料架 */
+function populateFrame(){
+  (window.CONV_INDEX&&CONV_INDEX.frame||[]).forEach(fr=>{
+    const f=document.createElement("a");f.className="sfile k-frame haslink";
+    f.textContent=short(fr.name.startsWith("📖")?fr.name:"🏛 "+fr.name,28);f.dataset.key="pre:"+fr.path;
+    if(location.protocol==="file:")f.href="file:///"+fr.path.replace(/\\/g,"/").replace(/^\/+/,"");
+    else f.href="/open?path="+encodeURIComponent(fr.path);
+    f.target=location.protocol==="file:"?"_blank":"";
+    f.dataset.tip="<b>框架资料</b>（预置常驻，不随对话变化）<br>"+(fr.desc?esc(short(fr.desc,130))+"<br>":"")+"路径: "+esc(fr.path)+"<br><span style='color:#2563c4'>点击↗打开实际文件</span>";
+    $("shelf-frame").appendChild(f);
+  });
+}
+window.addEventListener("load",populateFrame);
+/* ===== 对话清单 ===== */
+function loadConv(cid, title, row){
+  row.classList.add("loading");
+  const evs = (window.__TRAJ_LIB__||{})[cid];
+  const start = ()=>{
+    const g=(window.CONV_INDEX||{groups:[]}).groups.find(g=>g.convs.some(c=>c.id===cid));
+    CUR={cid:cid,proj:g?g.project:"",title:title};
+    loadEvents(window.__TRAJ_LIB__[cid], title, g?g.project:"");
+    $("taskOverlay").style.display="none";
+  };
+  if(evs){start();return;}
+  row.cells[1].innerHTML="⏳ 加载中…";
+  const s=document.createElement("script");
+  s.src="lib/c-"+encodeURIComponent(cid)+".js";
+  s.onload=start;
+  s.onerror=()=>{row.classList.remove("loading");row.cells[1].innerHTML="❌ 加载失败";};
+  document.body.appendChild(s);
+}
+$("loadLabel").addEventListener("click",ev=>{
+  ev.preventDefault();
+  if(!window.CONV_INDEX){alert("对话索引未加载：lib/index.js 缺失——先运行 python -X utf8 build_library.py");return;}
+  const tb=$("convRows");tb.innerHTML="";let total=0;
+  window.CONV_INDEX.groups.forEach(g=>{
+    const gr=document.createElement("tr");gr.className="grprow";
+    gr.innerHTML="<td colspan='3'>📁 "+esc(g.project)+"（"+g.convs.length+" 个对话）</td>";
+    tb.appendChild(gr);
+    g.convs.forEach((c,i)=>{
+      total++;
+      const tr=document.createElement("tr");tr.className="taskrow";
+      tr.innerHTML="<td style='width:20px'>"+total+"</td><td><b>"+esc(c.title)+"</b>"+
+        "<br><span class='st2'>"+c.date+" "+c.time+" · "+c.n+" 事件 · 装包≈"+fmt(c.tok)+" · 失败 "+c.errs+" · 写盘 "+c.writes+"</span></td>"+
+        "<td style='width:60px;text-align:right'><span class='st2'>打开 ▸</span></td>";
+      tr.onclick=()=>loadConv(c.id,c.title,tr);
+      tb.appendChild(tr);
+    });
+  });
+  $("convMeta").textContent=total+" 个对话 · 一个对话=一个项目 · 点选后加载（懒加载分片）";
+  $("taskOverlay").style.display="block";
+});
+/* ===== 实时跟踪模式（需 live_server.py）===== */
+function liveTick(){
+  if(!LIVE||!LIVE.sid)return;
+  fetch("/api/events?sid="+encodeURIComponent(LIVE.sid)+"&off="+LIVE.off).then(r=>r.json()).then(j=>{
+    if(j.error||!j.events)return;
+    LIVE.off=j.off;
+    if(!j.events.length)return;
+    EVS.push(...j.events);
+    errs+=j.events.filter(e=>!e.ok).length;$("errN").textContent=errs;
+    const before=STEPS.length;
+    STEPS=buildSteps(EVS);$("roundTotal").textContent=STEPS.length;
+    if(LIVE.follow){liveCatch();}   // 有新轮次就续跟(不在尾部=跨轮跳跃,catch自动快进到末尾)
+    else{
+      const n=STEPS.length-1-idx;
+      $("caption").innerHTML="<b>🔴 跟踪中</b> ｜ 已暂停跟随，有 <b>"+n+"</b> 步新内容 <b id='jumpLive'>▶跳到最新并恢复跟随</b>";
+      const jl=$("jumpLive");if(jl)jl.onclick=()=>{LIVE.follow=true;liveCatch();};
+    }
+  }).catch(()=>{});
+}
+function liveCatch(){
+  if(!LIVE)return;clearInterval(LIVE.fw);
+  LIVE.fw=setInterval(()=>{
+    if(idx>=STEPS.length-1){clearInterval(LIVE.fw);liveCaption();return;}
+    next();},350);
+}
+function liveCaption(){
+  $("caption").innerHTML="<b>🔴 跟踪中</b> ｜ 视角钉在末尾，新内容写入时自动跟上节奏；滚轮回看历史即暂停跟随";
+}
+function liveStop(){
+  if(!LIVE)return;clearInterval(LIVE.tick);clearInterval(LIVE.fw);
+  LIVE=null;
+  $("liveBtn").textContent="🔴 跟踪模式";$("liveBtn").classList.remove("on");
+  $("convTitle").textContent=$("convTitle").textContent.replace("🔴 ","");
+  $("caption").innerHTML="跟踪已退出。重新「📂 载入对话」或再点跟踪模式。";
+}
+function setZoom(z){
+  document.body.style.zoom=z;
+  document.body.style.height=(100/z)+"vh";   // 补偿vh,保持满屏
+  document.querySelectorAll("#fsBtns .fbtn").forEach(b=>b.classList.toggle("on",b.dataset.z==z));
+  try{localStorage.setItem("trajZoom",String(z))}catch(e){}
+}
+document.querySelectorAll("#fsBtns .fbtn").forEach(b=>b.onclick=()=>setZoom(b.dataset.z));
+let _svZ=1;try{_svZ=parseFloat(localStorage.getItem("trajZoom"))||1}catch(e){}
+setZoom(_svZ);
+$("liveBtn").onclick=()=>{
+  if(location.protocol==="file:"){alert("跟踪需要本地服务器：\n  python -X utf8 live_server.py\n然后用 http://localhost:8765 打开页面（双击file://只支持回放已建库对话）");return;}
+  if(LIVE&&LIVE.tick){liveStop();return;}
+  trackCurrent();
+};
+function trackCurrent(){
+  if(!CUR||!CUR.cid){alert("先「📂 载入对话」选一个话题再点跟踪——跟踪=盯住当前对话的新动态");return;}
+  const seg=CUR.cid.split("__"),proj=seg[0].replace(/_/g,"/"),dt=seg[1]||"";
+  fetch("/api/sessions").then(r=>r.json()).then(j=>{
+    const cands=(j.sessions||[]).filter(x=>x.proj===proj&&x.file.startsWith(dt));
+    if(!cands.length){alert("找不到该对话的源会话文件（"+dt+"）——可能已归档或改名");return;}
+    fetch("/api/events?sid="+encodeURIComponent(cands[0].sid)+"&off=0").then(r=>r.json()).then(j2=>{
+      if(j2.error){alert("读取失败："+j2.error);return;}
+      if(LIVE){clearInterval(LIVE.tick);clearInterval(LIVE.fw);}
+      LIVE={tick:null,fw:null,sid:cands[0].sid,off:j2.off,follow:true};
+      loadEvents(j2.events,CUR.title||((cands[0].file.match(/(\d{4}-\d{2}-\d{2})T(\d{2}-\d{2})/)||["",""])[0].replace("T"," ")),CUR.proj);
+      $("convTitle").textContent="🔴 "+$("convTitle").textContent;
+      $("liveBtn").textContent="🟢 跟踪中·点击退出";$("liveBtn").classList.add("on");
+      $("taskOverlay").style.display="none";
+      LIVE.tick=setInterval(liveTick,1500);
+      jumpLatestRound();   // 跳到最近的一轮,之后有新轮次自动续跟
+    }).catch(e=>alert("读取失败："+e));
+  }).catch(e=>alert("服务器连接失败："+e));
+}
+function jumpLatestRound(){
+  let i=STEPS.length-1;while(i>0&&STEPS[i].kind!=="user"&&STEPS[i].kind!=="boot")i--;
+  goTo(i);liveCatch();
+}
+$("fileInput").addEventListener("change",ev=>{
+  const f=ev.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{CUR=null;const events=rd.result.split(String.fromCharCode(10)).filter(l=>l.trim()).map(l=>JSON.parse(l));loadEvents(events,f.name);};
+  rd.readAsText(f,"utf-8");
+});
+$("dirInput").addEventListener("change",ev=>{
+  const files=[...ev.target.files];if(!files.length)return;
+  const convFiles=files.filter(f=>/conv-.*\.jsonl$/.test(f.name));
+  if(!convFiles.length){alert("目录里没找到 conv-*.jsonl——先用 parse_pi_session.py 生成");return;}
+  const tb=$("convRows");tb.innerHTML="";let pend=convFiles.length;
+  convFiles.forEach((f,i2)=>{
+    const rd=new FileReader();
+    rd.onload=()=>{
+      const events=rd.result.split(String.fromCharCode(10)).filter(l=>l.trim()).map(l=>JSON.parse(l));
+      const tr=document.createElement("tr");tr.className="taskrow";
+      tr.innerHTML="<td style='width:26px'>"+(i2+1)+"</td><td><b>"+esc(f.name)+"</b></td>";
+      tr.onclick=()=>{loadEvents(events,f.name);$("taskOverlay").style.display="none";};
+      tb.appendChild(tr);
+      if(--pend===0){$("convMeta").textContent="本地目录";$("taskOverlay").style.display="block";}
+    };
+    rd.readAsText(f,"utf-8");
+  });
+});
+/* ===== 控制 ===== */
+let wheelLock=0;
+window.addEventListener("wheel",e=>{
+  const now=Date.now();if(now-wheelLock<250)return;wheelLock=now;
+  if(e.target&&e.target.closest&&e.target.closest("#shelfPanel,#talkList,#log,#taskBox,#agentPanel,#packPanel,#modelPanel"))return;
+  if(e.deltaY>0){if(LIVE)LIVE.follow=false;next();}else if(e.deltaY<0)prev();
+},{passive:true});
+window.addEventListener("keydown",e=>{
+  if(["ArrowRight","ArrowDown","PageDown"," "].includes(e.key)){e.preventDefault();next();}
+  else if(["ArrowLeft","ArrowUp","PageUp"].includes(e.key)){e.preventDefault();prev();}
+  else if(["ArrowRight","ArrowDown","PageDown"].includes(e.key)){e.preventDefault();if(LIVE)LIVE.follow=false;next();}
+  else if(e.key==="Home")goTo(0);
+  else if(e.key==="End")goTo(STEPS.length-1);
+});
+window.addEventListener("resize",()=>clearLines());
+$("resetBtn").onclick=()=>{if(STEPS.length)goTo(0);};
+$("endBtn").onclick=()=>{if(STEPS.length)goTo(STEPS.length-1);};
+</script>
+<script src="lib/index.js"></script>
+</body>
+</html>
