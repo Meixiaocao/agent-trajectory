@@ -74,6 +74,18 @@ pi 会话 JSONL ──parse_pi_session.py──▶ 14动作事件流 ──build
 - 子 agent 只显发起/回包，内部轨迹不下钻（规划中）
 - Claude Code / Codex 格式未接入（schema 已预留 think/inject 位）
 
+## 更新日志
+
+完整变更见 [CHANGELOG.md](CHANGELOG.md)。当前版本 **v1.1.0**（2026-10-09）：
+新增对话清单 🔄 刷新载入新会话、时间倒序排序；修复字号切换浮窗偏离、http 下文件打开失效；跟踪红点动效、滚动条减细。
+
+<details>
+<summary>历史版本</summary>
+
+**v1.0.0**（2026-10-08）：首个公开版本——四区结构回放、14 动作 schema、压缩与装包可视化、实时跟踪、字号三档、skill 化。
+
+</details>
+
 ## License
 
 MIT
