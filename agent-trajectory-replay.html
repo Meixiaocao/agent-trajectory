@@ -5,8 +5,8 @@
 <title>Agent 轨迹回溯器 · 四区结构 v3（一步=一根线）</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-::-webkit-scrollbar{width:6px;height:6px}
-::-webkit-scrollbar-thumb{background:rgba(120,130,145,.22);border-radius:3px}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-thumb{background:rgba(120,130,145,.22);border-radius:1.5px}
 ::-webkit-scrollbar-thumb:hover{background:rgba(120,130,145,.4)}
 ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
 *{scrollbar-width:thin;scrollbar-color:rgba(120,130,145,.28) transparent}
@@ -28,7 +28,9 @@ header .sub{color:#68737f;font-size:11px}
 .fbtn.on{background:#2563c4;color:#fff;border-color:#2563c4}
 #fsBtns{font-size:11px;color:#68737f}
 #liveBtn{background:#fff;color:#b02a2a;border:1.5px solid #d8a0a0;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;font-weight:600}
-#liveBtn.on{background:#c0392b;color:#fff;border-color:#c0392b}
+#liveBtn.on{background:#c0392b;color:#fff;border-color:#c0392b;animation:livepulse 1.4s ease-in-out infinite}
+.livedot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#e53935;margin-right:7px;vertical-align:1px;animation:livepulse 1.4s ease-in-out infinite}
+@keyframes livepulse{0%,100%{opacity:1}50%{opacity:.35}}
 
 #loadLabel:hover{background:#1c4d94}
 #dirLabel{border:1px solid #2a7a3e;color:#2a7a3e;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:11.5px}
@@ -92,6 +94,7 @@ a.sfile.wback.written::after{content:" ✏️⬆"}
 .chip.taken{opacity:.35;text-decoration:line-through}
 a.sfile.written.k-frame::after{content:" ⬆";color:#7a4fa8;font-size:9px}
 @keyframes pop{from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
+.subzone:has(#chipsSub:empty){display:none}   /* 未派活时不占位 */
 .subzone{border:2px dashed #9a86c4;border-radius:9px;padding:5px 6px;margin-top:6px;background:#fbfaff;flex-shrink:0}
 .subzone>.zt{font-size:10.5px;font-weight:800;color:#4a3663;margin-bottom:4px}
 .subzone>.zt small{font-weight:400;color:#8a8aa0}
@@ -310,10 +313,14 @@ document.addEventListener("mousemove",ev=>{
   const tip=$("tip");
   if(t&&t.dataset.tip){
     tip.innerHTML=t.dataset.tip;tip.style.display="block";
-    const w=tip.offsetWidth,h=tip.offsetHeight;
-    let x=ev.clientX+14,y=ev.clientY+16;
-    if(x+w>innerWidth-8)x=ev.clientX-w-14;
-    if(y+h>innerHeight-8)y=Math.max(8,innerHeight-h-10);
+    // 锚定悬停元素右下(getBoundingClientRect恒为视觉坐标,免疫body zoom的鼠标坐标歧义)
+    const z=parseFloat(document.body.style.zoom)||1;
+    const r=t.getBoundingClientRect();
+    const w=tip.offsetWidth,h=tip.offsetHeight;   // offset宽高=未缩放布局值
+    const vw=innerWidth/z,vh=innerHeight/z;       // 视口在本地坐标系中的尺寸
+    let x=(r.right+12)/z,y=(r.top+10)/z;
+    if(x+w>vw-8)x=Math.max(8,vw-w-8);   // 贴右边缘向左钳制(不翻面)
+    if(y+h>vh-8)y=Math.max(8,vh-h-8);
     tip.style.left=x+"px";tip.style.top=y+"px";
   }else tip.style.display="none";
 });
@@ -330,7 +337,9 @@ function addChip(name,tok,cls,tipHtml){
   c.innerHTML=short(name,40);
   c.dataset.tip=tipHtml+"<br>装包 ≈"+fmt(Math.max(0,tok));
   c.dataset.w=tok;$("packChips").appendChild(c);
-  c.scrollIntoView({block:"nearest"});   // 溢出自动滚动，连线才打得准
+  const pr=$("packChips");   // 新条目保证完整露出(最后一条不再半截)
+  const pb=pr.getBoundingClientRect(),cb=c.getBoundingClientRect();
+  if(cb.bottom>pb.bottom-1){const z=parseFloat(document.body.style.zoom)||1;pr.scrollTop+=(cb.bottom-pb.bottom+6)/z;}
   words+=Math.max(0,tok);items++;upd();return c;}
 /* 终端动作分类（全库 6280 条实测定的 8 类）：条目显类型，完整命令进浮窗 */
 function execInfo(cmd){
@@ -519,11 +528,16 @@ $("loadLabel").addEventListener("click",ev=>{
   ev.preventDefault();
   if(!window.CONV_INDEX){alert("对话索引未加载：lib/index.js 缺失——先运行 python -X utf8 build_library.py");return;}
   const tb=$("convRows");tb.innerHTML="";let total=0;
-  window.CONV_INDEX.groups.forEach(g=>{
+  const groups=[...window.CONV_INDEX.groups].map(g=>({...g,
+    convs:[...g.convs].sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time))}))   // 组内时间倒序
+    .sort((a,b)=>{const ma=a.convs.reduce((m,c)=>c.date+c.time>m?c.date+c.time:m,"");
+                  const mb=b.convs.reduce((m,c)=>c.date+c.time>m?c.date+c.time:m,"");
+                  return mb.localeCompare(ma);});   // 组按最新对话时间倒序
+  groups.forEach(g=>{
     const gr=document.createElement("tr");gr.className="grprow";
     gr.innerHTML="<td colspan='3'>📁 "+esc(g.project)+"（"+g.convs.length+" 个对话）</td>";
     tb.appendChild(gr);
-    g.convs.forEach((c,i)=>{
+    g.convs.forEach(c=>{
       total++;
       const tr=document.createElement("tr");tr.className="taskrow";
       tr.innerHTML="<td style='width:20px'>"+total+"</td><td><b>"+esc(c.title)+"</b>"+
@@ -533,9 +547,48 @@ $("loadLabel").addEventListener("click",ev=>{
       tb.appendChild(tr);
     });
   });
-  $("convMeta").textContent=total+" 个对话 · 一个对话=一个项目 · 点选后加载（懒加载分片）";
+  $("convMeta").innerHTML=total+" 个对话 · 最新在上 · 点选后加载（懒加载分片）"+
+    (location.protocol==="file:"?"":" ｜ <b id='refreshList' style='cursor:pointer;color:#2563c4'>🔄 刷新（载入服务运行期的新会话）</b>");
+  if(location.protocol!=="file:")$("refreshList").onclick=refreshListRows;
   $("taskOverlay").style.display="block";
 });
+function refreshListRows(){
+  fetch("/api/sessions").then(r=>r.json()).then(j=>{
+    const sess=j.sessions||[];
+    // 已入库判定: cid=proj(斜杠转下划线)__dateThhmm
+    const known=new Set();
+    (window.CONV_INDEX.groups||[]).forEach(g=>g.convs.forEach(c=>known.add(c.id)));
+    const fresh=sess.filter(sv=>{
+      const mm=sv.file.match(/(\d{4}-\d{2}-\d{2})T(\d{2}-\d{2})/);
+      return !mm||!known.has(sv.proj.replace(/\//g,"_")+"__"+mm[1]+"T"+mm[2]);
+    });
+    const tb=$("convRows");
+    [...tb.querySelectorAll("tr.newrow")].forEach(x=>x.remove());
+    if(!fresh.length){$("convMeta").innerHTML="没有发现未入库的新会话（"+sess.length+" 个会话已全部入库）";return;}
+    const gr=document.createElement("tr");gr.className="grprow newrow";
+    gr.innerHTML="<td colspan='3'>🆕 未入库新会话（"+fresh.length+" 个 · 实时解析载入）</td>";
+    tb.insertBefore(gr,tb.firstChild);
+    fresh.forEach(sv=>{
+      const mm=sv.file.match(/(\d{4}-\d{2}-\d{2})T(\d{2}-\d{2})/);
+      const age=Math.max(0,Math.round(Date.now()/1000-sv.mtime));
+      const tr=document.createElement("tr");tr.className="taskrow newrow";
+      tr.innerHTML="<td style='width:20px'>🆕</td><td><b>"+esc(sv.proj)+"</b> · "+(mm?mm[1]+" "+mm[2].replace("-",":"):"")+
+        "<br><span class='st2'>"+(sv.live?"🔴 直播中 · ":"")+age+" 秒前有动静 · "+Math.round(sv.size/1024)+"KB —— 点选实时载入</span></td>"+
+        "<td style='width:60px;text-align:right'><span class='st2'>载入 ▸</span></td>";
+      tr.onclick=()=>liveLoadNew(sv);
+      tb.insertBefore(tr,gr.nextSibling);
+    });
+  }).catch(e=>alert("刷新失败："+e));
+}
+function liveLoadNew(sv){
+  fetch("/api/events?sid="+encodeURIComponent(sv.sid)+"&off=0").then(r=>r.json()).then(j=>{
+    if(j.error){alert("读取失败："+j.error);return;}
+    const nm=(sv.file.match(/(\d{4}-\d{2}-\d{2})T(\d{2}-\d{2})/)||["",""])[0].replace("T"," ");
+    CUR={cid:null,sid:sv.sid,proj:sv.proj,title:nm};   // sid 直连,跟踪免索引映射
+    loadEvents(j.events,nm,sv.proj);
+    $("taskOverlay").style.display="none";
+  }).catch(e=>alert("读取失败："+e));
+}
 /* ===== 实时跟踪模式（需 live_server.py）===== */
 function liveTick(){
   if(!LIVE||!LIVE.sid)return;
@@ -568,7 +621,7 @@ function liveStop(){
   if(!LIVE)return;clearInterval(LIVE.tick);clearInterval(LIVE.fw);
   LIVE=null;
   $("liveBtn").textContent="🔴 跟踪模式";$("liveBtn").classList.remove("on");
-  $("convTitle").textContent=$("convTitle").textContent.replace("🔴 ","");
+  const dt=$("convTitle").querySelector(".livedot");if(dt)dt.remove();
   $("caption").innerHTML="跟踪已退出。重新「📂 载入对话」或再点跟踪模式。";
 }
 function setZoom(z){
@@ -586,7 +639,22 @@ $("liveBtn").onclick=()=>{
   trackCurrent();
 };
 function trackCurrent(){
-  if(!CUR||!CUR.cid){alert("先「📂 载入对话」选一个话题再点跟踪——跟踪=盯住当前对话的新动态");return;}
+  if(!CUR){alert("先「📂 载入对话」选一个话题再点跟踪——跟踪=盯住当前对话的新动态");return;}
+  if(CUR.sid){   // 刷新载入的新会话: sid 直连
+    fetch("/api/events?sid="+encodeURIComponent(CUR.sid)+"&off=0").then(r=>r.json()).then(j2=>{
+      if(j2.error){alert("读取失败："+j2.error);return;}
+      if(LIVE){clearInterval(LIVE.tick);clearInterval(LIVE.fw);}
+      LIVE={tick:null,fw:null,sid:CUR.sid,off:j2.off,follow:true};
+      loadEvents(j2.events,CUR.title||"",CUR.proj||"");
+      $("convTitle").innerHTML='<span class="livedot"></span>'+esc($("convTitle").textContent);
+      $("liveBtn").textContent="🟢 跟踪中·点击退出";$("liveBtn").classList.add("on");
+      $("taskOverlay").style.display="none";
+      LIVE.tick=setInterval(liveTick,1500);
+      jumpLatestRound();
+    }).catch(e=>alert("读取失败："+e));
+    return;
+  }
+  if(!CUR.cid){alert("先「📂 载入对话」选一个话题再点跟踪——跟踪=盯住当前对话的新动态");return;}
   const seg=CUR.cid.split("__"),proj=seg[0].replace(/_/g,"/"),dt=seg[1]||"";
   fetch("/api/sessions").then(r=>r.json()).then(j=>{
     const cands=(j.sessions||[]).filter(x=>x.proj===proj&&x.file.startsWith(dt));
@@ -596,7 +664,7 @@ function trackCurrent(){
       if(LIVE){clearInterval(LIVE.tick);clearInterval(LIVE.fw);}
       LIVE={tick:null,fw:null,sid:cands[0].sid,off:j2.off,follow:true};
       loadEvents(j2.events,CUR.title||((cands[0].file.match(/(\d{4}-\d{2}-\d{2})T(\d{2}-\d{2})/)||["",""])[0].replace("T"," ")),CUR.proj);
-      $("convTitle").textContent="🔴 "+$("convTitle").textContent;
+      $("convTitle").innerHTML='<span class="livedot"></span>'+esc($("convTitle").textContent);
       $("liveBtn").textContent="🟢 跟踪中·点击退出";$("liveBtn").classList.add("on");
       $("taskOverlay").style.display="none";
       LIVE.tick=setInterval(liveTick,1500);
